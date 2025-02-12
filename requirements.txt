@@ -1,5 +1,5 @@
-hexdump==3.3
-pefile==2024.8.26
-prettytable==3.12.0
-pywin32==306
-sddl_parser==0.6.2
+hexdump
+pefile
+prettytable
+pywin32
+sddl_parser
