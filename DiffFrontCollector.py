@@ -16,7 +16,7 @@ from datetime import *
 import winreg
 
 __author__ = 'bopin'
-__version__ = '0.23'
+__version__ = '0.3'
 
 #
 #   gloabl profile for debugging
@@ -29,6 +29,7 @@ g_count = 0
 table = PrettyTable(['sha256','file version','file size','msdllink','pdblink','stamp','short time','fullpath'])
 collect_targets = []
 g_ext = ['.sys','.exe','.dll']
+g_output = []
 
 class EventLogable:
     def report_event(self,module,type,str,debug):
@@ -186,6 +187,8 @@ class RegOperationable(FormatRegTypeable):
         winreg.CloseKey(key)
     def create(self,key,sub_key):
         return winreg.CreateKey(key,sub_key)
+    def delete(self,key,sub_key):
+        return winreg.DeleteKey(key,sub_key)
     def open(self,key,sub_key):
         return winreg.OpenKey(key,sub_key)
     def query_default_value(self,key):
@@ -193,15 +196,18 @@ class RegOperationable(FormatRegTypeable):
             return self.query_value(key,'')[1]
         except:
             return None
+    
     def query_value(self,key,valuename):
         try:
             return list(filter(lambda x: x[0] == valuename,self.enum_values(key)))[0]
         except:
             return None
+    
     def query_value_type(self,key,valuename,issymbol = False):
         if issymbol:
             return self.get_symbols(self.query_value(key,valuename)[2])
         return self.query_value(key,valuename)[2]
+    
     def enum_values(self,key):
         result = []
         try:
@@ -218,6 +224,13 @@ class RegOperationable(FormatRegTypeable):
             #print(Color.RED + e.strerror + Color.END)
             pass
         return result
+    
+    def write_default_value(self,key,value):
+        winreg.SetValue(key,"",winreg.REG_SZ,value)
+    
+    def write_value(self,key,valuename,type,value):
+        winreg.SetValueEx(key,valuename,0,type,value)
+
     def enum_keys(self,key):
         try:
             i = 0
@@ -295,7 +308,7 @@ class Metadata():
         self.pdblink = Util.make_symbol_server_pdb(Path(PureWindowsPath(file).name).stem + ".pdb",pel.pdblink)
         self.stamp = os.path.getmtime(file)
         self.short_time = 0
-        self.fullpath = file
+        self.fullpath = str(file)
 
 class Runner(EventLogable,RegOperationable):
     def execute_entry(self):
@@ -329,22 +342,100 @@ class Runner(EventLogable,RegOperationable):
         g_file.close()
         g_efile.close()
 
-    def install(self):
+    def uninstall(self):
         key = self.init()
+        rootkey = self.open(key,'msdlcollector')
+        if rootkey is not None:
+            self.close_key(rootkey)
+            self.delete(key,'msdlcollector')
+            print('uninstall finished')
+
+    def install(self):
+        """ First collector msdl links, store them into registry and next diff the registry hkey/value.
+        The expect output result format is list(tuple) | pass them into patch diff bot purpose for decompilation
+        """
+        key = self.init()
+        try:
+            rootkey = self.open(key,'msdlcollector')
+
+            if rootkey is not None:
+                print('it has installed')
+                self.close_key(rootkey)
+                return 0
+        except:
+            pass
+        
+        # 1. install write metadata
         rootkey = self.create(key,'msdlcollector')
-        for item in self.enum_values(rootkey):
-            print(item)
-        print(self.query_value(rootkey,''))
-        print(self.query_value_type(rootkey,''))
+        self.write_default_value(rootkey,str(datetime.now()))
+        meta = MetadataHeader()
+        self.write_value(rootkey,'flag',winreg.REG_DWORD,meta.flag)
+        self.write_value(rootkey,'version',winreg.REG_SZ,meta.os_friendly_version)
+        self.write_value(rootkey,'arch',winreg.REG_DWORD,meta.arch)
+        self.write_value(rootkey,'type',winreg.REG_DWORD,meta.type)
+        self.write_value(rootkey,'source',winreg.REG_MULTI_SZ,meta.collector_dir)
 
-        for item in self.enum_values(self.open(key,'Console')):
-            print(item)
+        for target in collect_targets:
+            for i in Util.file_name_walk(target):
+                try:
+                    mt = Metadata(i)
+                    subkey = self.create(rootkey,f'{mt.fullpath}')
+                    self.write_value(subkey,'sha256',winreg.REG_SZ,mt.sha256)
+                    self.write_value(subkey,'fileversion',winreg.REG_SZ,mt.file_version)
+                    self.write_value(subkey,'filesize',winreg.REG_DWORD,mt.filesize)
+                    self.write_value(subkey,'msdllink',winreg.REG_SZ,mt.msdllink)
+                    self.write_value(subkey,'pdblink',winreg.REG_SZ,mt.pdblink)
+                    self.write_value(subkey,'filestamp',winreg.REG_SZ,str(mt.stamp))
+                    self.write_value(subkey,'shorttime',winreg.REG_DWORD,mt.short_time)
+                    self.write_value(subkey,'fullpath',winreg.REG_SZ,mt.fullpath)
+                    self.close_key(subkey)
+                except Exception as e:
+                    print(f"{datetime.now()}  {i} {str(e)}\n")
+        self.close_key(rootkey)
+        self.uninit(key)
 
-        for sk in self.enum_keys(key):
-            print(sk)
+    def diff(self,args):
+        key = self.init()
+        try:
+            rootkey = self.open(key,'msdlcollector')
+            if rootkey is None:
+                print('have not installed')
+                return 0
+        except:
+            pass
+        rootkey = self.create(key,'msdlcollector')
+        self.write_value(rootkey,'lastdatetime',winreg.REG_SZ,str(datetime.now()))
+
+        for target in collect_targets:
+            for i in Util.file_name_walk(target):
+                try:
+                    mt = Metadata(i)
+                    subkey = self.create(rootkey,f'{mt.fullpath}')
+                    if self.query_value(subkey,'sha256')[1] != mt.sha256:
+                        g_output.append((self.query_value(subkey,'msdllink')[1],mt.msdllink))
+                        if args.disableupdate:
+                            self.close_key(subkey)
+                            continue
+                        #
+                        # update carry out only not with disableupdate
+                        #
+                        self.write_value(subkey,'sha256',winreg.REG_SZ,mt.sha256)
+                        self.write_value(subkey,'fileversion',winreg.REG_SZ,mt.file_version)
+                        self.write_value(subkey,'filesize',winreg.REG_DWORD,mt.filesize)
+                        self.write_value(subkey,'msdllink',winreg.REG_SZ,mt.msdllink)
+                        self.write_value(subkey,'pdblink',winreg.REG_SZ,mt.pdblink)
+                        self.write_value(subkey,'filestamp',winreg.REG_SZ,str(mt.stamp))
+                        self.write_value(subkey,'shorttime',winreg.REG_DWORD,mt.short_time)
+                        self.write_value(subkey,'fullpath',winreg.REG_SZ,mt.fullpath)
+                    self.close_key(subkey)
+                except Exception as e:
+                    print(f"{datetime.now()}  {i} {str(e)}\n")
 
         self.close_key(rootkey)
         self.uninit(key)
+
+        for old,new in g_output:
+            print(f'{g_msdl}/{old}  {g_msdl}/{new}')
 
 def main():
     Runner().execute_entry()
@@ -355,14 +446,22 @@ def get_args():
     parser.add_argument('-n','--num',dest='num',type = int, default= 3, choices=[0,1,2,3], help=r'0 system32 | 1 system32\drivers | 2 defender')
     parser.add_argument('-i','--install',action='store_true',help='first collect msdl link information and push them into registry HKCU\\msdlcollector')
     parser.add_argument('-u','--uninstall',action='store_true',help='remove the specified registry')
+    parser.add_argument('-p','--peek',action='store_true',help='default file name (windows latest version)')
+    parser.add_argument('--diff',action='store_true',help='collect msdl link in real time and diff with registry which output a pair of old-new links (decompilation diff pending item)')
+    parser.add_argument('--disableupdate',action='store_true',help='dont override registry value when changes')
     parser.add_argument('-v','--verbose',action='store_true',help='output the verbose information')
     return parser
 
 if __name__ == '__main__':
     try:
         args = get_args().parse_args()
-        if args.install:
-            #Runner().install()
+
+        if args.uninstall:
+            Runner().uninstall()
+            sys.exit(0)
+
+        if args.peek:
+            print(f"{platform.platform()}-{Util.get_version_number(r'c:\windows\system32\ntoskrnl.exe')}-diff.log")
             sys.exit(0)
 
         if len(args.target_dirs) == 0:
@@ -379,8 +478,16 @@ if __name__ == '__main__':
             DEBUG = False
         for item in args.target_dirs:
             collect_targets.append(item)
+        
+        if args.diff:
+            Runner().diff(args)
+            sys.exit(0)
+
+        if args.install:
+            Runner().install()
+            sys.exit(0)
+
         g_file = open(f"{platform.platform()}-{Util.get_version_number(r'c:\windows\system32\ntoskrnl.exe')}-diff.log",'w+')
         main()
     except Exception as e:
         print(Color.RED + str(e) + Color.END)
-        print(get_args().print_help())
