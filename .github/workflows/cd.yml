@@ -47,5 +47,5 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: MsdlCollector.zip
-        asset_name: DiffClient.zip
+        asset_name: MsdlCollector.zip
         asset_content_type: application/zip
