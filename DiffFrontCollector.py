@@ -417,7 +417,7 @@ class Runner(EventLogable,RegOperationable):
                             self.close_key(subkey)
                             continue
                         #
-                        # update carry out only not with disableupdate
+                        # update will carry out without disableupdate args
                         #
                         self.write_value(subkey,'sha256',winreg.REG_SZ,mt.sha256)
                         self.write_value(subkey,'fileversion',winreg.REG_SZ,mt.file_version)
@@ -435,6 +435,9 @@ class Runner(EventLogable,RegOperationable):
         self.uninit(key)
 
         for old,new in g_output:
+            #
+            # store diff msdl links
+            #
             print(f'{g_msdl}/{old}  {g_msdl}/{new}')
 
 def main():
@@ -461,7 +464,11 @@ if __name__ == '__main__':
             sys.exit(0)
 
         if args.peek:
-            print(f"{platform.platform()}-{Util.get_version_number(r'c:\windows\system32\ntoskrnl.exe')}-diff.log")
+            #
+            # compatible with  python3.8, 3.9  Windows 7 and 8.1
+            #
+            tmp = Util.get_version_number(r'c:\windows\system32\ntoskrnl.exe')
+            print(f"{platform.platform()}-{tmp}-diff.log")
             sys.exit(0)
 
         if len(args.target_dirs) == 0:
@@ -486,8 +493,11 @@ if __name__ == '__main__':
         if args.install:
             Runner().install()
             sys.exit(0)
-
-        g_file = open(f"{platform.platform()}-{Util.get_version_number(r'c:\windows\system32\ntoskrnl.exe')}-diff.log",'w+')
+        #
+        # compatible with  python3.8, 3.9  Windows 7 and 8.1
+        #
+        tmp = Util.get_version_number(r'c:\windows\system32\ntoskrnl.exe')
+        g_file = open(f"{platform.platform()}-{tmp}-diff.log",'w+')
         main()
     except Exception as e:
         print(Color.RED + str(e) + Color.END)

@@ -1,5 +1,3 @@
-hexdump
 pefile
 prettytable
 pywin32
-sddl_parser
