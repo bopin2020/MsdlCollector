@@ -21,7 +21,6 @@ __version__ = '0.3'
 #
 #   gloabl profile for debugging
 #
-DEBUG = True
 g_file = None
 g_efile = open("error.log",'w+')
 g_msdl = 'https://msdl.microsoft.com/download/symbols'
@@ -35,6 +34,9 @@ class EventLogable:
     def report_event(self,module,type,str,debug):
         if debug:
             print(str)
+DEBUG = True
+g_loglevel = 0
+g_log = EventLogable()
 
 class Color:
     PURPLE = '\033[95m'
@@ -245,7 +247,6 @@ class RegOperationable(FormatRegTypeable):
             #print(Color.RED + e.strerror + Color.END)
             pass
 
-
 class PefileLink():
     def __init__(self,file) -> None:
         self.pe = pefile.PE(file,fast_load=True)
@@ -390,7 +391,7 @@ class Runner(EventLogable,RegOperationable):
                     self.write_value(subkey,'fullpath',winreg.REG_SZ,mt.fullpath)
                     self.close_key(subkey)
                 except Exception as e:
-                    print(f"{datetime.now()}  {i} {str(e)}\n")
+                    self.report_event(f"{datetime.now()}  {i} {str(e)}")
         self.close_key(rootkey)
         self.uninit(key)
 
@@ -412,7 +413,7 @@ class Runner(EventLogable,RegOperationable):
                     mt = Metadata(i)
                     subkey = self.create(rootkey,f'{mt.fullpath}')
                     if self.query_value(subkey,'sha256')[1] != mt.sha256:
-                        g_output.append((self.query_value(subkey,'msdllink')[1],mt.msdllink))
+                        g_output.append((mt.fullpath,self.query_value(subkey,'msdllink')[1],mt.msdllink))
                         if args.disableupdate:
                             self.close_key(subkey)
                             continue
@@ -429,19 +430,37 @@ class Runner(EventLogable,RegOperationable):
                         self.write_value(subkey,'fullpath',winreg.REG_SZ,mt.fullpath)
                     self.close_key(subkey)
                 except Exception as e:
-                    print(f"{datetime.now()}  {i} {str(e)}\n")
+                    print(f"{datetime.now()}  {i} {str(e)}")
 
-        self.close_key(rootkey)
-        self.uninit(key)
-
-        for old,new in g_output:
+        time = datetime.now()
+        storekey = None
+        try:
+            name = f'store\{str(time.year)}-{str(time.month)}'
+            self.report_event(0,1,name,DEBUG)
+            storekey = self.create(rootkey,name)
+        except Exception as e:
+            self.report_event(0,1,str(e),DEBUG)
+        
+        for file,old,new in g_output:
             #
             # store diff msdl links
             #
-            print(f'{g_msdl}/{old}  {g_msdl}/{new}')
+            print(f'{file}  {g_msdl}/{old}  {g_msdl}/{new}')
+            if args.store and storekey:
+                #
+                # create subkey to store this diff values
+                #
+                self.write_value(storekey,file,winreg.REG_MULTI_SZ,[old,new])
+
+        self.close_key(storekey)
+        self.close_key(rootkey)
+        self.uninit(key)
+
 
 def main():
+    g_log.report_event(0,1,"runner.execute_entry starting...",DEBUG)
     Runner().execute_entry()
+    g_log.report_event(0,1,"runner.execute_entry finished...",DEBUG)
 
 def get_args():
     parser = argparse.ArgumentParser(prog='start info',description= 'diff msdl collector',epilog='end information')
@@ -452,6 +471,7 @@ def get_args():
     parser.add_argument('-p','--peek',action='store_true',help='default file name (windows latest version)')
     parser.add_argument('--diff',action='store_true',help='collect msdl link in real time and diff with registry which output a pair of old-new links (decompilation diff pending item)')
     parser.add_argument('--disableupdate',action='store_true',help='dont override registry value when changes')
+    parser.add_argument('-s','--store',action='store_true',help='auto store to register msdlcollector\\store\\year-month')
     parser.add_argument('-v','--verbose',action='store_true',help='output the verbose information')
     return parser
 
