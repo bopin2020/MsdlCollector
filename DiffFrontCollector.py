@@ -16,7 +16,7 @@ from datetime import *
 import winreg
 
 __author__ = 'bopin'
-__version__ = '0.3'
+__version__ = '0.3.2'
 
 #
 #   gloabl profile for debugging
@@ -395,6 +395,40 @@ class Runner(EventLogable,RegOperationable):
         self.close_key(rootkey)
         self.uninit(key)
 
+    def query(self):
+        key = self.init()
+        try:
+            rootkey = self.open(key,'msdlcollector')
+            if rootkey is None:
+                print('have not installed')
+                return 0
+        except:
+            pass
+        rootkey = self.create(key,'msdlcollector')
+        time = datetime.now()
+        storekey = None
+        try:
+            name = f'store'
+            self.report_event(0,1,name,DEBUG)
+            storekey = self.create(rootkey,name)
+        except Exception as e:
+            self.report_event(0,1,str(e),DEBUG)
+        
+        if args.enum:
+            [print(x) for x in self.enum_keys(storekey)]
+
+        if args.query is not None and args.query in self.enum_keys(storekey):
+            try:
+                k = self.create(storekey,args.query)
+                #
+                # filter  advanced??
+                #
+                data = filter(lambda x: args.queryfilter in x[0] or args.queryfilter == "*",self.enum_values(k))
+
+                [print(f'{x[0]}  {g_msdl}/{x[1][0]}  {g_msdl}/{x[1][1]}') for x in data]
+            except Exception as e:
+                self.report_event(0,1,str(e),DEBUG)
+
     def diff(self,args):
         key = self.init()
         try:
@@ -471,6 +505,9 @@ def get_args():
     parser.add_argument('-p','--peek',action='store_true',help='default file name (windows latest version)')
     parser.add_argument('--diff',action='store_true',help='collect msdl link in real time and diff with registry which output a pair of old-new links (decompilation diff pending item)')
     parser.add_argument('--disableupdate',action='store_true',help='dont override registry value when changes')
+    parser.add_argument('--enum',action='store_true',help='enum stores')
+    parser.add_argument('--query',type= str,help='use one of enum results')
+    parser.add_argument('--queryfilter',type= str,help='filter')
     parser.add_argument('-s','--store',action='store_true',help='auto store to register msdlcollector\\store\\year-month')
     parser.add_argument('-v','--verbose',action='store_true',help='output the verbose information')
     return parser
@@ -513,6 +550,11 @@ if __name__ == '__main__':
         if args.install:
             Runner().install()
             sys.exit(0)
+
+        if args.enum or args.query is not None:
+            Runner().query()
+            sys.exit(0)
+
         #
         # compatible with  python3.8, 3.9  Windows 7 and 8.1
         #

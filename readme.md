@@ -34,6 +34,12 @@ python DiffFrontCollector.py -i
 python DiffFrontCollector.py --diff
 ```
 
+> query the store files 
+```
+python .\DiffFrontCollector.py --enum
+python .\DiffFrontCollector.py --query 2025-3 --queryfilter .sys
+```
+
 > when you execute --diff features, it will generate a list of old-new msdl link and override registry value
 > if you dont wanna this, try with --disableupdate
 > -s --store   auto backup diff link results 
