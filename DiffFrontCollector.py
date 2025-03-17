@@ -435,7 +435,7 @@ class Runner(EventLogable,RegOperationable):
         time = datetime.now()
         storekey = None
         try:
-            name = f'store\{str(time.year)}-{str(time.month)}'
+            name = f'store\\{str(time.year)}-{str(time.month)}'
             self.report_event(0,1,name,DEBUG)
             storekey = self.create(rootkey,name)
         except Exception as e:
