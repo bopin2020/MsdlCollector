@@ -423,6 +423,8 @@ class Runner(EventLogable,RegOperationable):
                 #
                 # filter  advanced??
                 #
+                if args.queryfilter is None:
+                    args.queryfilter = ""
                 data = filter(lambda x: args.queryfilter in x[0] or args.queryfilter == "*",self.enum_values(k))
 
                 [print(f'{x[0]}  {g_msdl}/{x[1][0]}  {g_msdl}/{x[1][1]}') for x in data]
