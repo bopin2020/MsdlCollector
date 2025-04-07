@@ -1,4 +1,5 @@
 import io
+import logging
 import os
 import sys
 import time
@@ -16,7 +17,7 @@ from datetime import *
 import winreg
 
 __author__ = 'bopin'
-__version__ = '0.3.2'
+__version__ = '0.3.3'
 
 #
 #   gloabl profile for debugging
@@ -29,12 +30,20 @@ table = PrettyTable(['sha256','file version','file size','msdllink','pdblink','s
 collect_targets = []
 g_ext = ['.sys','.exe','.dll']
 g_output = []
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class EventLogable:
-    def report_event(self,module,type,str,debug):
-        if debug:
-            print(str)
-DEBUG = True
+    def report_event(self,module,type,str,level):
+        match level:
+            case logging.INFO:
+                logger.info(str)
+            case logging.WARNING:
+                logger.warning(str)
+            case logging.ERROR:
+                logger.error(str)
+            case logging.DEBUG:
+                logger.debug(str)
 g_loglevel = 0
 g_log = EventLogable()
 
@@ -296,7 +305,7 @@ class MetadataHeader(EventLogable):
 
     def write(self,file):
         t = f'{self.flag}\t{self.os_friendly_version}\t{self.arch}\t{self.type}\n'
-        self.report_event(0,1,t,DEBUG)
+        self.report_event(0,1,t,logging.INFO)
         file.write(t)
 
 class Metadata():
@@ -391,7 +400,7 @@ class Runner(EventLogable,RegOperationable):
                     self.write_value(subkey,'fullpath',winreg.REG_SZ,mt.fullpath)
                     self.close_key(subkey)
                 except Exception as e:
-                    self.report_event(f"{datetime.now()}  {i} {str(e)}")
+                    self.report_event(0,1,f"{datetime.now()}  {i} {str(e)}",logging.ERROR)
         self.close_key(rootkey)
         self.uninit(key)
 
@@ -429,7 +438,7 @@ class Runner(EventLogable,RegOperationable):
 
                 [print(f'{x[0]}  {g_msdl}/{x[1][0]}  {g_msdl}/{x[1][1]}') for x in data]
             except Exception as e:
-                self.report_event(0,1,str(e),DEBUG)
+                self.report_event(0,1,str(e),logging.ERROR)
 
     def diff(self,args):
         key = self.init()
@@ -475,7 +484,7 @@ class Runner(EventLogable,RegOperationable):
             self.report_event(0,1,name,DEBUG)
             storekey = self.create(rootkey,name)
         except Exception as e:
-            self.report_event(0,1,str(e),DEBUG)
+            self.report_event(0,1,str(e),logging.ERROR)
         
         for file,old,new in g_output:
             #
