@@ -1,0 +1,3 @@
+version v0.3.4
+2025-04-13
+1. support regex filter during --queryfilter

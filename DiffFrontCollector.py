@@ -1,4 +1,5 @@
 import io
+import re
 import logging
 import os
 import sys
@@ -17,7 +18,7 @@ from datetime import *
 import winreg
 
 __author__ = 'bopin'
-__version__ = '0.3.3'
+__version__ = '0.3.4'
 
 #
 #   gloabl profile for debugging
@@ -320,7 +321,13 @@ class Metadata():
         self.short_time = 0
         self.fullpath = str(file)
 
-class Runner(EventLogable,RegOperationable):
+class Wildcardable:
+    def wildcard(self,pattern):
+        escaped = re.escape(pattern)
+        escaped = escaped.replace(r'\*', '.*').replace(r'\?', '.')
+        return fr'^{escaped}$'     
+
+class Runner(EventLogable,RegOperationable,Wildcardable):
     def execute_entry(self):
         global g_count
         header = MetadataHeader()
@@ -434,9 +441,9 @@ class Runner(EventLogable,RegOperationable):
                 #
                 if args.queryfilter is None:
                     args.queryfilter = ""
-                data = filter(lambda x: args.queryfilter in x[0] or args.queryfilter == "*",self.enum_values(k))
-
-                [print(f'{x[0]}  {g_msdl}/{x[1][0]}  {g_msdl}/{x[1][1]}') for x in data]
+                regex = re.compile(self.wildcard(args.queryfilter))
+                data = filter(lambda x: regex.match(x[0]),self.enum_values(k))
+                [print(f'{g_msdl}/{x[1][0]} {g_msdl}/{x[1][1]}') for x in data]
             except Exception as e:
                 self.report_event(0,1,str(e),logging.ERROR)
 
