@@ -70,9 +70,8 @@ class Util:
     def file_name_walk(file_dir):
         for root, dirs, files in os.walk(file_dir):
             for file in files:
-                if(root ==  r"c:\windows\system32" or root ==  r"c:\windows\system32\drivers" or r'C:\ProgramData\Microsoft\Windows Defender\Platform' in root):
-                    if(file.endswith('.sys') or file.endswith('.exe') or file.endswith('.dll')):
-                        yield root + "\\" + file
+                if(file.endswith('.sys') or file.endswith('.exe') or file.endswith('.dll')):
+                    yield root + "\\" + file
 
     @staticmethod
     def get_os_info():
@@ -367,6 +366,31 @@ class Runner(EventLogable,RegOperationable,Wildcardable):
             self.delete(key,'msdlcollector')
             print('uninstall finished')
 
+    def install_item(self,rootkey,difftarget):
+        for i in Util.file_name_walk(difftarget):
+            try:
+                mt = Metadata(i)
+                subkey = self.create(rootkey,f'{mt.fullpath}')
+                self.write_value(subkey,'sha256',winreg.REG_SZ,mt.sha256)
+                self.write_value(subkey,'fileversion',winreg.REG_SZ,mt.file_version)
+                self.write_value(subkey,'filesize',winreg.REG_DWORD,mt.filesize)
+                self.write_value(subkey,'msdllink',winreg.REG_SZ,mt.msdllink)
+                self.write_value(subkey,'pdblink',winreg.REG_SZ,mt.pdblink)
+                self.write_value(subkey,'filestamp',winreg.REG_SZ,str(mt.stamp))
+                self.write_value(subkey,'shorttime',winreg.REG_DWORD,mt.short_time)
+                self.write_value(subkey,'fullpath',winreg.REG_SZ,mt.fullpath)
+                self.close_key(subkey)
+            except Exception as e:
+                self.report_event(0,1,f"{datetime.now()}  {i} {str(e)}",logging.ERROR)
+
+    def subscribe_difftarget(self,dir):
+        key = self.init()
+        try:
+            rootkey = self.open(key,'msdlcollector')
+            self.install_item(rootkey,dir)
+        except:
+            logger.info("subscribe except")
+
     def install(self):
         """ First collector msdl links, store them into registry and next diff the registry hkey/value.
         The expect output result format is list(tuple) | pass them into patch diff bot purpose for decompilation
@@ -393,21 +417,7 @@ class Runner(EventLogable,RegOperationable,Wildcardable):
         self.write_value(rootkey,'source',winreg.REG_MULTI_SZ,meta.collector_dir)
 
         for target in collect_targets:
-            for i in Util.file_name_walk(target):
-                try:
-                    mt = Metadata(i)
-                    subkey = self.create(rootkey,f'{mt.fullpath}')
-                    self.write_value(subkey,'sha256',winreg.REG_SZ,mt.sha256)
-                    self.write_value(subkey,'fileversion',winreg.REG_SZ,mt.file_version)
-                    self.write_value(subkey,'filesize',winreg.REG_DWORD,mt.filesize)
-                    self.write_value(subkey,'msdllink',winreg.REG_SZ,mt.msdllink)
-                    self.write_value(subkey,'pdblink',winreg.REG_SZ,mt.pdblink)
-                    self.write_value(subkey,'filestamp',winreg.REG_SZ,str(mt.stamp))
-                    self.write_value(subkey,'shorttime',winreg.REG_DWORD,mt.short_time)
-                    self.write_value(subkey,'fullpath',winreg.REG_SZ,mt.fullpath)
-                    self.close_key(subkey)
-                except Exception as e:
-                    self.report_event(0,1,f"{datetime.now()}  {i} {str(e)}",logging.ERROR)
+            self.install_item(rootkey,target)
         self.close_key(rootkey)
         self.uninit(key)
 
@@ -497,7 +507,7 @@ class Runner(EventLogable,RegOperationable,Wildcardable):
             #
             # store diff msdl links
             #
-            print(f'{file}  {g_msdl}/{old}  {g_msdl}/{new}')
+            print(f'{g_msdl}/{old} {g_msdl}/{new}')
             if args.store and storekey:
                 #
                 # create subkey to store this diff values
@@ -526,6 +536,7 @@ def get_args():
     parser.add_argument('--enum',action='store_true',help='enum stores')
     parser.add_argument('--query',type= str,help='use one of enum results')
     parser.add_argument('--queryfilter',type= str,help='filter')
+    parser.add_argument('--subscribe',type= str,help='subscribe a new diff target')
     parser.add_argument('-s','--store',action='store_true',help='auto store to register msdlcollector\\store\\year-month')
     parser.add_argument('-v','--verbose',action='store_true',help='output the verbose information')
     return parser
@@ -561,6 +572,10 @@ if __name__ == '__main__':
         for item in args.target_dirs:
             collect_targets.append(item)
         
+        if args.subscribe is not None:
+            logger.info(f"install only {args.subscribe}")
+            Runner().subscribe_difftarget(args.subscribe)
+
         if args.diff:
             Runner().diff(args)
             sys.exit(0)
