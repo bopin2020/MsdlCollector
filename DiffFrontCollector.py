@@ -456,6 +456,8 @@ class Runner(EventLogable,RegOperationable,Wildcardable):
                 [print(f'{g_msdl}/{x[1][0]} {g_msdl}/{x[1][1]}') for x in data]
             except Exception as e:
                 self.report_event(0,1,str(e),logging.ERROR)
+        else:
+            self.report_event(0,1,f'query {args.query} not found\nyou can select from {','.join(self.enum_keys(storekey))}',logging.ERROR)
 
     def diff(self,args):
         key = self.init()
