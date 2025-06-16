@@ -41,6 +41,9 @@ python DiffFrontCollector.py --diff
 ```
 python .\DiffFrontCollector.py --enum
 python .\DiffFrontCollector.py --query 2025-3 --queryfilter .sys
+
+support to queryfilter from the all history dataset.
+python .\DiffFrontCollector.py --queryfilter "*ztdns*"
 ```
 
 > when you execute --diff features, it will generate a list of old-new msdl link and override registry value

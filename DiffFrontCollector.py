@@ -18,7 +18,7 @@ from datetime import *
 import winreg
 
 __author__ = 'bopin'
-__version__ = '0.3.4'
+__version__ = '0.4'
 
 #
 #   gloabl profile for debugging
@@ -95,10 +95,8 @@ class Util:
     
     @staticmethod
     def get_product_version(path):
-
         pe = pefile.PE(path)
         #print PE.dump_info()
-
         ms = pe.VS_FIXEDFILEINFO.ProductVersionMS
         ls = pe.VS_FIXEDFILEINFO.ProductVersionLS
         return (Util.HIWORD (ms), Util.LOWORD (ms), Util.HIWORD (ls), Util.LOWORD (ls))
@@ -421,6 +419,20 @@ class Runner(EventLogable,RegOperationable,Wildcardable):
         self.close_key(rootkey)
         self.uninit(key)
 
+    def _query(self,storekey,k):
+        try:
+            k = self.create(storekey,k)
+            #
+            # filter  advanced??
+            #
+            if args.queryfilter is None:
+                args.queryfilter = ""
+            regex = re.compile(self.wildcard(args.queryfilter))
+            data = filter(lambda x: regex.match(x[0]),self.enum_values(k))
+            [print(f'{g_msdl}/{x[1][0]} {g_msdl}/{x[1][1]}') for x in data]
+        except Exception as e:
+            self.report_event(0,1,str(e),logging.ERROR)
+
     def query(self):
         key = self.init()
         try:
@@ -439,23 +451,12 @@ class Runner(EventLogable,RegOperationable,Wildcardable):
             storekey = self.create(rootkey,name)
         except Exception as e:
             self.report_event(0,1,str(e),DEBUG)
-        
         if args.enum:
             [print(x) for x in self.enum_keys(storekey)]
-
-        if args.query is not None and args.query in self.enum_keys(storekey):
-            try:
-                k = self.create(storekey,args.query)
-                #
-                # filter  advanced??
-                #
-                if args.queryfilter is None:
-                    args.queryfilter = ""
-                regex = re.compile(self.wildcard(args.queryfilter))
-                data = filter(lambda x: regex.match(x[0]),self.enum_values(k))
-                [print(f'{g_msdl}/{x[1][0]} {g_msdl}/{x[1][1]}') for x in data]
-            except Exception as e:
-                self.report_event(0,1,str(e),logging.ERROR)
+        if args.query in self.enum_keys(storekey):
+            self._query(storekey,args.query)
+        elif args.query == None or args.query == '*':
+            [self._query(storekey,x) for x in self.enum_keys(storekey)]
         else:
             self.report_event(0,1,f'query {args.query} not found\nyou can select from {','.join(self.enum_keys(storekey))}',logging.ERROR)
 
@@ -586,7 +587,7 @@ if __name__ == '__main__':
             Runner().install()
             sys.exit(0)
 
-        if args.enum or args.query is not None:
+        if args.enum or args.queryfilter:
             Runner().query()
             sys.exit(0)
 
